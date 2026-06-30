@@ -1,10 +1,10 @@
 # ParMaCH - Parameterized model of a cooling magma chamber
 1D model modelling crystal nucleation, growth, settling in an injected body of magma
 
-Program: ParMaCh - 1D Model of Solidification of Magma Chambers (version 4)
-Author: MSci. Vít Beran
-Run with: python3 main.py (--flags of your choice)
-Run 'python3 main.py --help' for more information.
+Program: ParMaCh - 1D Model of Solidification of Magma Chambers (version 4) 
+- Author: MSci. Vít Beran
+- Run with: python3 main.py (--flags of your choice)
+- Run 'python3 main.py --help' for more information.
 
 Contents:
 - main.py:   main unit of the model, model setup, initilization
