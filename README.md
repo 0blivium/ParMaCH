@@ -38,7 +38,7 @@ Supported features:
 
 Remark: as of 6/30/2026, the model runs in the quasi-stationary limit.
 
-Examples with exmplanation:
+Examples with explanations:
 0D reference run A: python main.py --SOLVER=0 --input_hflux --hflux=200 --hfluxSI --V0HG97=1.e-6 --N0HG97=1.e3 --XL0=0.75 --ratio=10000 --HE_CSTM --SED_METHOD=3 --nu --Ti97=0.92 --Tg97=0.95
 
 > SOLVER=0 (0D energy balance), input_hflux (model supplied with initial heat flux), hflux=200 (initial heat flux = 200), hfluxSI (W/m2), V0HG97 (growth rate amplitude),
