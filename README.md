@@ -36,7 +36,7 @@ Supported features:
 - 0D energy balance | 1D coupling with host rock (effective conductivity approach)
 - Binary eutectic system Anorthite-Diopside (Courtial et al. 2000, Gale et al. 2008, Giordano et al. 2008, Krattli and Schmidt 2021)
 
-Remark: as of 6/30/2026, the model runs in the quasi-stationary limit.
+Remark: as of 6/30/2026, the model runs in the quasi-stationary limit (one timescale approach not implemented yet).
 
 Examples with explanations:
 0D reference run A: python main.py --SOLVER=0 --input_hflux --hflux=200 --hfluxSI --V0HG97=1.e-6 --N0HG97=1.e3 --XL0=0.75 --ratio=10000 --HE_CSTM --SED_METHOD=3 --nu --Ti97=0.92 --Tg97=0.95
