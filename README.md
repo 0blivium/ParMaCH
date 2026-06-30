@@ -6,6 +6,10 @@ Program: ParMaCh - 1D Model of Solidification of Magma Chambers (version 4)
 - Run with: python3 main.py (--flags of your choice)
 - Run 'python3 main.py --help' for more information.
 
+Special requirements: 
+- Python version: Python 3.10. and higher
+- numba (njit, jitclass), h5py, objgraph (memory precaution), tqdm
+
 Contents:
 - main.py:   main unit of the model, model setup, initilization
 - mFunc.py:  auxiliary functions, custom crystal population classes, population dynamics solvers
@@ -33,3 +37,20 @@ Supported features:
 - Binary eutectic system Anorthite-Diopside (Courtial et al. 2000, Gale et al. 2008, Giordano et al. 2008, Krattli and Schmidt 2021)
 
 Remark: as of 6/30/2026, the model runs in the quasi-stationary limit.
+
+Examples with exmplanation:
+0D reference run A: python main.py --SOLVER=0 --input_hflux --hflux=200 --hfluxSI --V0HG97=1.e-6 --N0HG97=1.e3 --XL0=0.75 --ratio=10000 --HE_CSTM --SED_METHOD=3 --nu --Ti97=0.92 --Tg97=0.95
+
+> SOLVER=0 (0D energy balance), input_hflux (model supplied with initial heat flux), hflux=200 (initial heat flux = 200), hfluxSI (W/m2), V0HG97 (growth rate amplitude),
+  N0HG97 (nucleation rate amplitude), XL0 (initial compositon %wt An), ratio=10000 (estimate for the initial time step), HE_CSTM (heat flux follows an empirically prescribed decay),
+  SED_METHOD=3 (invoke the crystal tracking algorithm for the population dynamics), nu (thermally-dependent viscosity), Ti97 (nucleation rate peak, nucleation lag), Tg97 (growth rate peak)
+
+0D reference run B: python main.py --SOLVER=0 --input_hflux --hflux=200 --hfluxSI --V0HG97=1.e-6 --N0HG97=1.e3 --XL0=0.75 --ratio=1000 --HE_CONST --SED_METHOD=3 --nu --Ti97=0.81 --Tg97=0.93 
+
+> SOLVER=0 (0D energy balance), input_hflux (model supplied with initial heat flux), hflux=40 (initial heat flux = 40), hfluxSI (W/m2), V0HG97 (growth rate amplitude),
+  N0HG97 (nucleation rate amplitude), XL0 (initial compositon %wt An), ratio (estimate for the initial time step), HE_CONST (constant heat flux), SED_METHOD=3 (invoke the crystal tracking       algorithm for the population dynamics), nu (thermally-dependent viscosity), Ti97 (nucleation rate peak, nucleation lag), Tg97 (growth rate peak)
+
+1D reference simulation: python main.py --SOLVER=1 --V0HG97=1.e-8 --XL0=0.75 --SED_METHOD=3 --nu --H0=1000 --suc=15.0
+
+> SOLVER=1 (1D heat equation), V0HG97 (growth rate amplitude), XL0 (initial composition %wt An), SED_METHOD (crystal tracking algorithm), nu (thermally-dependent viscosity),
+  H0 (initial height of the chamber), suc (initial degree of superheating)
