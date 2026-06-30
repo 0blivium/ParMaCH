@@ -3,6 +3,7 @@
 
 Program: ParMaCh - 1D Model of Solidification of Magma Chambers (version 4) 
 - Author: MSci. Vít Beran
+- Affiliation: Department of Mathematics and Physics, Charles University, Prague
 - Run with: python3 main.py (--flags of your choice)
 - Run 'python3 main.py --help' for more information.
 
