@@ -314,14 +314,14 @@ class Attributes: # FIXME & TODO: renames, etc.
     TE            = None  # Time evolution
     nu            = None
     PCITER        = None  # Predictor-corrector iterations 
-    NUTBL         = None
-    ratio         = None
-    MODE          = None
-    cMthd         = None
-    MT            = None
-    tblaoff       = None       
-    printstep     = None
-    HE_CSTM       = None   
+    NUTBL         = None  # TODO
+    ratio         = None  # TODO  
+    MODE          = None  # TODO
+    cMthd         = None  # TODO
+    MT            = None  # TODO
+    tblaoff       = None  # TODO       
+    printstep     = None  # TODO
+    HE_CSTM       = None  # TODO   
     EA            = 1.0   # activation energy scaling parameter (increase/decrease viscosity)
     SCORR         = None  # idle-mixing correction
     RTIS          = None  # Rayleigh-Taylor instability timescale
@@ -332,27 +332,56 @@ class Attributes: # FIXME & TODO: renames, etc.
 class SingleRunAttributes:
     """ Compute one steady-state of the magma reservoir with parameters of your choice """
 
-    # TODO: add loading a json file that would rewrite the initialized variables?
+    # TODO: Add loading a json file that would rewrite the initialized variables?
 
-    def __init__(self, deltaT: float, epsd: float):
-        self.Tbulk = 1278.
+    def __init__(self, deltaT: float, epsd: float, flux: float):
+        self.Tbulk = 1450.
         self.Troof = self.Tbulk - deltaT
-        self.Tliqd = 1301.
+        self.Tliqd = 1473.
         self.Tnucl = self.Tliqd - epsd
+        self.flux  = flux
         self.Hnow  = 1000.
         self.nu    = 1.e-3
+        self.htbl  = 1.e-3
+        self.Wrms  = 1.e-3
+        self.Ra    = 1.e15
+        self.Re    = 1.e3
 
-        self.physics_check()
-        self.nucleation_check() # TODO: do I want it here?
+        #self.physics_check()
+        #self.nucleation_check() # TODO: do I want it here?
+
+    def load_parameters():
+        pass
 
     def physics_check(self):
+        print(" Physics check of the supplied parameters...")
+        print("", "="*40)
         if self.Tbulk > self.Tliqd:
            raise ValueError("[SINGLE RUN] - Superheated bulk!") 
+        else:
+            print(" [OK] Bulk is below the liquidus, continue...")
+        if self.Hnow < 0.0:
+            raise ValueError("[SINGLE RUN] - Negative chamber height!")
+        else:
+            print(" [OK] Chamber height non-zero, continue...")
+
+        print()
 
     def nucleation_check(self):
         if self.Troof > self.Tnucl:
             print(f"Roof temperature {self.Troof:.2f} vs. nucleation threshold {self.Tnucl:.2f}.")
             raise ValueError("[SINGLE RUN] - No nucleation!")
+        else:
+            print(" [OK] The roof is undercooled, the nucleation may commence, continue...")
+
+    def parameter_print(self):
+        print(f" Bulk temperature:      {self.Tbulk:.3e}{Units.Tunit}.")
+        print(f" Roof temperature:      {self.Troof:.3e}{Units.Tunit}.")
+        print(f" Liquidus temperature:  {self.Tliqd:.3e}{Units.Tunit}.")
+        print(f" Nucleation threshold:  {self.Tnucl:.3e}{Units.Tunit}.")
+        print(f" Height of the chamber: {self.Hnow:.3e}{Units.sunit}.")
+        print(f" Kinematic viscosity:   {self.nu:.3e}{Units.nunit}.")
+        print(f" Heat flux:             {self.flux:.3e}{Units.funit}.")
 
 class AuxUnits:
     """ Auxiliary class for text formatting """    
@@ -380,8 +409,5 @@ Init    = InitVals()
 Diag    = DiagnosticsVariables()
 Constants1D = Constants1DHE()
 
-# Initialization of the single run:
-SingleRun = SingleRunAttributes(deltaT=1.e0, epsd=22.0) # FIXME
-
 ######################################################################################################
-#% end of the module!
+#% end of the module!   

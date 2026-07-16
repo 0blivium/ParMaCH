@@ -560,7 +560,7 @@ def SEDphase(step:       int,                     # step of the thermal evolutio
 
 
 def calculate_distributions(i: int, Ra: float, Re: float, Wrms: float, Hnow: float, Tbulk: float, Troof: float,
-                            Tliqd: float, Tnucl: float, tc: float, _nu: float, flux: float, Teut: float
+                            Tliqd: float, Tnucl: float, tc: float, _nu: float, flux: float, Teut: float, SingleRun: SingleRunAttributes=None
                         ) -> tuple[float, float, float, float, float, float, float]:
     
     """ Calculate convection profile, spatial discretization TBL/NBL, and final TBL/SED distributions """
@@ -574,10 +574,11 @@ def calculate_distributions(i: int, Ra: float, Re: float, Wrms: float, Hnow: flo
     
     # NOTE: The predicted thicknesses can be substantially different (up to 1 order of magnitude difference)!
     htbl = 6.4 * np.power(Ra, -1./3.) * Hnow if not Attributes.TBL else calculate_tbl_thickness(Hnow, Nu) 
+
+    if Attributes.SRUN and SingleRun is not None: htbl = SingleRun.htbl
     hnbl = min(htbl*(Tnucl - Troof) / (Tbulk - Troof), htbl)
-    
-    if hnbl < 0.0: 
-        raise ValueError("Thickness of the nucleation sublayer can not be negative!")
+
+    if hnbl < 0.0: raise ValueError("Thickness of the nucleation sublayer can not be negative!")
 
     """ Print state at step #:_i """
     logger.info(f"GOVERNING PARAMETERS (step: {i:d})")
@@ -1007,7 +1008,8 @@ def solve_odes1D(Hnow, XL, Tbulk, Tliqd, rhs_h, rhs_xl):
 
 
 def calculate_rates(_i: int, tCool: float, Ra: float, Re: float, Wrms: float, Hnow: float, Tbulk: float, Troof: float,
-                    Tliqd: float, Tnucl: float, nu: float, const: Parameters, flux: float, Teut: float
+                    Tliqd: float, Tnucl: float, nu: float, const: Parameters, flux: float, Teut: float, 
+                    SingleRun: SingleRunAttributes=None
     ) -> tuple[float, float, float, float, float, float, float, float, float]:
     
     """ Calculate the sedimentation/production rates """
@@ -1023,9 +1025,10 @@ def calculate_rates(_i: int, tCool: float, Ra: float, Re: float, Wrms: float, Hn
     if Troof <= Tnucl and _i > 0: # NOTE: added _i > 0 for class models A!
         htbl, hnbl, hrate, prate, amean, ameanblk, phiB \
             = calculate_distributions(_i, Ra, Re, Wrms, Hnow, Tbulk, Troof,
-                                      Tliqd, Tnucl, Diag.tCool, nu, flux, Teut)
+                                      Tliqd, Tnucl, Diag.tCool, nu, flux, Teut, SingleRun=SingleRun)
 
-        if Shared.onsetc is None and not Attributes.SRUN:  # Has crystallization been initiated?
+        # FIXME: i had to comment out the Attributes.SRUN part..
+        if Shared.onsetc is None: # and not Attributes.SRUN:  # Has crystallization been initiated?
             Shared.onsetc = _i
             logger.warning(f"NO CRYSTALLIZATION! System has been cooling down for time steps: 0-{_i:d} \
                             (~{tCool/RunConstants.ytosec:.3e} years)!")
@@ -1261,44 +1264,49 @@ def evol_chamber_step(
             )
 
 # Single run solver of the ParMaCH model:
-def srun_solver() -> None:
-    _i = 1; tCool = 0.0; flux = 0.0; Teut = 0.0
-
-    print("[WARNING] - srun_solver not finished!")
-    exit()
+def srun_solver(SingleRun: SingleRunAttributes) -> None:
+    _i = 1; tCool = 0.0; Teut = 0.0
 
     # Single run requires the computation of distTBL2D:
     #Attributes.TBL_METHOD = 2 # FIXME: <--- tohle nebude třeba?
     
+    # If the physics_check() passed through, you automatically have crystallisation guaranteed:
+    Shared.onsetc = _i
+
     # Save the initial values of viscosity, heat flux, and liquidus temperature:
-    Tbulk = SingleRun.Tbulk; Troof = SingleRun.Troof; Tliqd = SingleRun.Tliqd; Tnucl = SingleRun.Tnucl; Hnow = SingleRun.Hnow; nu = SingleRun.nu
+    Tbulk = SingleRun.Tbulk
+    Troof = SingleRun.Troof
+    Tliqd = SingleRun.Tliqd
+    Tnucl = SingleRun.Tnucl
+    Hnow  = SingleRun.Hnow
+    nu    = SingleRun.nu
+    flux  = SingleRun.flux
+    Ra    = SingleRun.Ra
+    Re    = SingleRun.Re 
+    Wrms  = SingleRun.Wrms
+
+    # Evade numba error:
     Shared.Tref = Tliqd
 
-    print(f"dT:   {abs(Tbulk - Troof)}")
-    print(f"Tnucl: {Tnucl} vs. Troof: {Troof}")
-
     # Parameterization of convection:
-    Pr, Ra, Re, Nu, Wrms = convection_state(nu, Hnow, Tbulk, Troof, ModelParameter)
+    #Pr, Ra, Re, Nu, Wrms = convection_state(nu, Hnow, Tbulk, Troof, ModelParameter)
     
     htbl, hnbl, hrate, prate, amean, ameanblk, phiB = calculate_rates(
         _i, tCool, Ra, Re, Wrms, Hnow, Tbulk, Troof, Tliqd, Tnucl, nu, ModelParameter, flux, Teut
     )
 
-    print(htbl, hnbl, hrate, prate, amean, ameanblk, phiB)
-    print(f"htbl: {1e3*htbl:.3e} [mm]")
-
     # prate je kompletní, chci ty separátní 
-
-    print(f"prateTBL: {Shared.prateTBL:.3e}")
-    print(f"prateBLK: {Shared.prateBLK:.3e}")
+    #print(f"prateTBL: {Shared.prateTBL:.3e}")
+    #print(f"prateBLK: {Shared.prateBLK:.3e}")
 
     # OK, now I need to compute latent heat from these guys:
     lheatTBL = Shared.prateTBL * ModelParameter.rhof * htbl * ModelParameter.Lheat
     lheatBLK = Shared.prateBLK * ModelParameter.rhof * (Hnow - htbl) * ModelParameter.Lheat
 
-    print("LATENT HEAT:")
-    print(f"latent heat (TBL): {lheatTBL:.3e}")
-    print(f"latent heat (BLK): {lheatBLK:.3e}")
+    #print("LATENT HEAT:")
+    #print(f"latent heat (TBL): {lheatTBL:.3e}")
+    #print(f"latent heat (BLK): {lheatBLK:.3e}")
+
 
 
     # COMPUTE THE LATENT HEAT HERE:
@@ -1307,7 +1315,8 @@ def srun_solver() -> None:
     #plt.show()
 
 
-
+    print(" [WARNING] - srun_solver not finished!")
+    exit()
 
     """
         Pro zadané parametry single běhu:

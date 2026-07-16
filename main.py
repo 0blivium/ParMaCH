@@ -124,9 +124,10 @@ def save_args_to_file(args, fname, ns=True):
 
 def main_SNGL(args: argparse.Namespace, SIGN: bool):
     if SIGN: print(chamber)
+    print(" Running a 1-snapshot call of ParMaCH...")
 
-    """
     # 1) Initialize the kinetic parameters:
+    print(" Only the Hortian crystallisation is supported..."); args.NG_METHOD = 2
     kinvals = "-"
     match args.kinref:
         case 0: # mean values from Hort 1997:
@@ -147,13 +148,32 @@ def main_SNGL(args: argparse.Namespace, SIGN: bool):
             ModelParameter.Tg_HG97 = args.Tg97
     if args.NG_METHOD == 1 and args.kinref != -1: raise Exception("You chose reference kinetics!")
 
+    args.SED_METHOD = 3
+
     # 2) Attributes Namespace:             
     for key, atrval in vars(args).items():
         if hasattr(Attributes, key):
-            setattr(Attributes, key, atrval)        
-    srun_solver()
+            setattr(Attributes, key, atrval) 
+
+    # 3) Find the nucleation delay:
+
+    #ModelParameter.epsdel = return_epsdel(SingleRun.Tliqd)
+    #print(f"Nucleation delay: {ModelParameter.epsdel:.3f}.")
+
+    # 3) Initialisation of the single run:
+
+    # TODO: initialise an empty object, load from a json file supplied by 2DConLat
+
+    SingleRun = SingleRunAttributes(deltaT=5.e1, epsd=22.0, flux=5.0)
+    SingleRun.physics_check()
+    SingleRun.parameter_print()
+
+    # 4) Call the 1-snapshot solver:       
+    srun_solver(SingleRun=SingleRun)
+
+    print(f"Visualising the latent heat distributions...")
+    print(f"Saving the latent heat sources into XY...")
     return
-    """
 
 def main_FULL(args: argparse.Namespace, SIGN: bool):
     if SIGN: print(chamber)
@@ -683,7 +703,7 @@ if __name__ == "__main__":
     args = parser.parse_args([] if "__file__" not in globals() else None) 
 
     if args.srun: 
-        # Execute the main unit for an arbitary input:
+        # Execute the main unit for an arbitary input, called from the 2DConLat code:
         main_SNGL(args=args, SIGN=True)
 
     else: 
