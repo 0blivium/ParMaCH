@@ -115,7 +115,7 @@ par_specs = [
 ]
 @jitclass(par_specs)
 class Parameters:    
-    """ Model parameters. 
+    """ Model parameters: 
     #% Data collected from: %#
         # %> crystal kinetics:    from Hort (1997), Couch (2003)
         # %> densities:           from Krattli & Schmidt (2021)
@@ -356,14 +356,13 @@ class SingleRunAttributes:
         with open(fname, "r", encoding="utf-8") as f:
             loaded_parameters = json.load(f)
 
-            #self.Tbulk = loaded_parameters["..."]
-            self.Troof  = ...
+            self.Tbulk  = loaded_parameters["Tbulk"]
+            self.Troof  = self.Tbulk - loaded_parameters["dTeff"]  #loaded_parameters["Troof"]
             self.htbl   = loaded_parameters["htbl"]
             self.Wrms   = loaded_parameters["Wrms"]
-            self.Tliqd  = ... #loaded_parameters["Tliqd"]
+            self.Tliqd  = loaded_parameters["Tliqd"]
             
             # TODO: do we need Ra, Re etc. actually not right?
-
 
             #print(loaded_parameters["H0"])
 

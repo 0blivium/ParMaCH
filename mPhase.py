@@ -1267,6 +1267,8 @@ def evol_chamber_step(
 def srun_solver(SingleRun: SingleRunAttributes) -> None:
     _i = 1; tCool = 0.0; Teut = 0.0
 
+    # FIXME: alloy setup
+
     # Single run requires the computation of distTBL2D:
     #Attributes.TBL_METHOD = 2 # FIXME: <--- tohle nebude třeba?
     
@@ -1277,13 +1279,17 @@ def srun_solver(SingleRun: SingleRunAttributes) -> None:
     Tbulk = SingleRun.Tbulk
     Troof = SingleRun.Troof
     Tliqd = SingleRun.Tliqd
-    Tnucl = SingleRun.Tnucl
     Hnow  = SingleRun.Hnow
-    nu    = SingleRun.nu
+    nu    = SingleRun.nu    # TODO: call Giordano
     flux  = SingleRun.flux
     Ra    = SingleRun.Ra
     Re    = SingleRun.Re 
     Wrms  = SingleRun.Wrms
+
+    # Nucleation delay:
+    epsdel = return_epsdel(Tliqd)
+    print("epsdel: ", epsdel)
+    Tnucl = Tliqd - epsdel
 
     # Evade numba error:
     Shared.Tref = Tliqd
@@ -1291,21 +1297,34 @@ def srun_solver(SingleRun: SingleRunAttributes) -> None:
     # Parameterization of convection:
     #Pr, Ra, Re, Nu, Wrms = convection_state(nu, Hnow, Tbulk, Troof, ModelParameter)
     
+    print(Troof, Tnucl, Tbulk, Tliqd)
+
+    Pr = nu / ModelParameter.kappa
+    Ra = calculate_rayleigh_number(Hnow, Tbulk, Troof, nu, ModelParameter)
+    Re = Wrms * Hnow / nu   
+    flux = 5.0
+
+    print(Pr, Ra, Re, flux, Teut)
+
     htbl, hnbl, hrate, prate, amean, ameanblk, phiB = calculate_rates(
         _i, tCool, Ra, Re, Wrms, Hnow, Tbulk, Troof, Tliqd, Tnucl, nu, ModelParameter, flux, Teut
     )
+
+    print(htbl, hnbl, hrate, prate, amean, ameanblk, phiB)
 
     # prate je kompletní, chci ty separátní 
     #print(f"prateTBL: {Shared.prateTBL:.3e}")
     #print(f"prateBLK: {Shared.prateBLK:.3e}")
 
     # OK, now I need to compute latent heat from these guys:
+    print(Shared.prateTBL, Shared.prateBLK, ModelParameter.rhof, ModelParameter.Lheat, htbl)
+
     lheatTBL = Shared.prateTBL * ModelParameter.rhof * htbl * ModelParameter.Lheat
     lheatBLK = Shared.prateBLK * ModelParameter.rhof * (Hnow - htbl) * ModelParameter.Lheat
 
-    #print("LATENT HEAT:")
-    #print(f"latent heat (TBL): {lheatTBL:.3e}")
-    #print(f"latent heat (BLK): {lheatBLK:.3e}")
+    print("LATENT HEAT:")
+    print(f"latent heat (TBL): {lheatTBL:.3e}")
+    print(f"latent heat (BLK): {lheatBLK:.3e}")
 
 
 

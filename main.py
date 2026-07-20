@@ -48,6 +48,7 @@ from scipy.optimize import curve_fit
 
 # Modules:
 from mPar import * 
+from mUtils import *
 from mFunc import *
 from mGL import *
 from mPlot import *
@@ -157,7 +158,23 @@ def main_SNGL(args: argparse.Namespace, SIGN: bool):
         if hasattr(Attributes, key):
             setattr(Attributes, key, atrval) 
 
+    # 3) Assemble the outputfile:
+    assemble_output_file_name(args=args)
+    if not os.path.exists(ModelParameter.outfile): os.mkdir(ModelParameter.outfile)
+
     # 3) Find the nucleation delay:
+    # TODO: this is done elsewhere
+
+    # 4) Assemble the binary alloy | petrological component:
+    args.bAnDi = True
+    if args.bAnDi:
+        if args.XL0 > ModelParameter.Xeut:
+            ModelParameter.rhoc = ModelParameter.rhocA
+        else:
+            ModelParameter.rhoc = ModelParameter.rhocD
+    else:
+        ModelParameter.rhoc = ModelParameter.rhocA
+
 
     #ModelParameter.epsdel = return_epsdel(SingleRun.Tliqd)
     #print(f"Nucleation delay: {ModelParameter.epsdel:.3f}.")
@@ -168,7 +185,7 @@ def main_SNGL(args: argparse.Namespace, SIGN: bool):
     SingleRun = SingleRunAttributes(deltaT=0.0, epsd=0.0, flux=0.0)
     try:
         print(f" Loading the input parameters from 'parmach_input.json'...")
-        print(os.getcwd())
+        print(" ", os.getcwd())
         SingleRun.load_args_from_file("parmach_input.json")
 
     except FileNotFoundError:
@@ -176,15 +193,14 @@ def main_SNGL(args: argparse.Namespace, SIGN: bool):
         print(f" Terminating ParMaCH!")
         exit()
 
-    SingleRun = SingleRunAttributes(deltaT=5.e1, epsd=22.0, flux=5.0)
     SingleRun.physics_check()
     SingleRun.parameter_print()
 
     # 4) Call the 1-snapshot solver:       
     srun_solver(SingleRun=SingleRun)
 
-    print(f"Visualising the latent heat distributions...")
-    print(f"Saving the latent heat sources into 'XY.dat'...")
+    print(f" Visualising the latent heat distributions...")
+    print(f" Saving the latent heat sources into 'XY.dat'...")
     return
 
 def main_FULL(args: argparse.Namespace, SIGN: bool):
@@ -262,6 +278,9 @@ def main_FULL(args: argparse.Namespace, SIGN: bool):
         ModelParameter.rhoc = ModelParameter.rhocA
 
     # Assemble the output file name:
+    assemble_output_file_name(args=args)
+
+    """
     timestamp = datetime.now().strftime("%Y-%m-%d_%H-%M-%S")    
     timestamp = "".join([timestamp, "_"])
     if args.JWSOLVER: timestamp = "JWSOLVER_"
@@ -308,6 +327,7 @@ def main_FULL(args: argparse.Namespace, SIGN: bool):
     if args.TBL: ModelParameter.outfile = "".join([ModelParameter.outfile, "_TBL"])
     if args.bAnDi: ModelParameter.outfile = "".join([ModelParameter.outfile, "_AnDi"])
     if args.LHEAT and args.SOLVER == 1: ModelParameter.outfile = "".join([ModelParameter.outfile, "_LHEAT"])
+    """
     
     # Rewrite the assembled name of the output file if desired:
     if args.dir is not None: ModelParameter.oufile = args.dir
@@ -708,6 +728,7 @@ def main_FULL(args: argparse.Namespace, SIGN: bool):
         print()
         print(" [WARNING] - J&W solver skipped!")
         logger.warning(" WARNING: J&W solver skipped!")
+    return
 
 ######################################################################################################
 
