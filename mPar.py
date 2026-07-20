@@ -1,6 +1,7 @@
 # Program: ParMaCh - 1D Model of Solidification of Magma Chambers (version 3)
 # Module: Parameters and constants
 
+import json
 import numpy as np
 from numba.experimental import jitclass
 from numba import float64, float32, int32, int64, int8, types
@@ -350,8 +351,21 @@ class SingleRunAttributes:
         #self.physics_check()
         #self.nucleation_check() # TODO: do I want it here?
 
-    def load_parameters():
-        pass
+    def load_args_from_file(self, fname):
+        """ Load parameters and rewrite the default ones """
+        with open(fname, "r", encoding="utf-8") as f:
+            loaded_parameters = json.load(f)
+
+            #self.Tbulk = loaded_parameters["..."]
+            self.Troof  = ...
+            self.htbl   = loaded_parameters["htbl"]
+            self.Wrms   = loaded_parameters["Wrms"]
+            self.Tliqd  = ... #loaded_parameters["Tliqd"]
+            
+            # TODO: do we need Ra, Re etc. actually not right?
+
+
+            #print(loaded_parameters["H0"])
 
     def physics_check(self):
         print(" Physics check of the supplied parameters...")

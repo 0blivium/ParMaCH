@@ -124,10 +124,12 @@ def save_args_to_file(args, fname, ns=True):
 
 def main_SNGL(args: argparse.Namespace, SIGN: bool):
     if SIGN: print(chamber)
+    print(" Coupling DNS with ParMaCH: ")
+    print("="*40)
     print(" Running a 1-snapshot call of ParMaCH...")
 
     # 1) Initialize the kinetic parameters:
-    print(" Only the Hortian crystallisation is supported..."); args.NG_METHOD = 2
+    #print(" Only the Hortian crystallisation is supported..."); args.NG_METHOD = 2
     kinvals = "-"
     match args.kinref:
         case 0: # mean values from Hort 1997:
@@ -162,7 +164,17 @@ def main_SNGL(args: argparse.Namespace, SIGN: bool):
 
     # 3) Initialisation of the single run:
 
-    # TODO: initialise an empty object, load from a json file supplied by 2DConLat
+    # Load the chamber profile from a json file supplied by 2DConLat:
+    SingleRun = SingleRunAttributes(deltaT=0.0, epsd=0.0, flux=0.0)
+    try:
+        print(f" Loading the input parameters from 'parmach_input.json'...")
+        print(os.getcwd())
+        SingleRun.load_args_from_file("parmach_input.json")
+
+    except FileNotFoundError:
+        print(f" The 2DConLat 'parmach_input.json' file with input parameters for the 1-snapshot solver not found!")
+        print(f" Terminating ParMaCH!")
+        exit()
 
     SingleRun = SingleRunAttributes(deltaT=5.e1, epsd=22.0, flux=5.0)
     SingleRun.physics_check()
@@ -172,7 +184,7 @@ def main_SNGL(args: argparse.Namespace, SIGN: bool):
     srun_solver(SingleRun=SingleRun)
 
     print(f"Visualising the latent heat distributions...")
-    print(f"Saving the latent heat sources into XY...")
+    print(f"Saving the latent heat sources into 'XY.dat'...")
     return
 
 def main_FULL(args: argparse.Namespace, SIGN: bool):

@@ -86,14 +86,8 @@ def extract_hpile_amean_from_each_dir(dirs, args_json, model_json, evol_file):
     XL        = time_evolution_data[:, 15]
     ameanblk  = time_evolution_data[:, 16]
 
-    # TEST:
-    #amean = amean[::1000]
-    #hpile = hpile[::1000]
-
     # DIAGNOSTIC QUANTITIES:
     setmarker = diagnostics_data[:, 27]
-
-    #setmarker = setmarker[::1000]
         
     # RETURN ADDITIONAL QUANTITIES:
     phiBmax = np.max(phib)
