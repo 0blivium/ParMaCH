@@ -229,6 +229,7 @@ class SharedVariables:
         self.prate     = None
         self.prateTBL  = None
         self.prateBLK  = None
+        self.prateTBLz = None                         # [s-1]         vertically dependent solid production in the TBL
 
         self.tdecayold = None                         # [-]           time index of the 1D heat flux fit onset  
         self.onsetfit  = None                         # [-]
@@ -326,7 +327,7 @@ class Attributes: # FIXME & TODO: renames, etc.
     EA            = 1.0   # activation energy scaling parameter (increase/decrease viscosity)
     SCORR         = None  # idle-mixing correction
     RTIS          = None  # Rayleigh-Taylor instability timescale
-    SRUN          = None
+    srun          = None
     IDMC          = None
 
 
@@ -335,18 +336,19 @@ class SingleRunAttributes:
 
     # TODO: Add loading a json file that would rewrite the initialized variables?
 
-    def __init__(self, deltaT: float, epsd: float, flux: float):
-        self.Tbulk = 1450.
-        self.Troof = self.Tbulk - deltaT
-        self.Tliqd = 1473.
-        self.Tnucl = self.Tliqd - epsd
-        self.flux  = flux
-        self.Hnow  = 1000.
-        self.nu    = 1.e-3
-        self.htbl  = 1.e-3
-        self.Wrms  = 1.e-3
-        self.Ra    = 1.e15
-        self.Re    = 1.e3
+    def __init__(self): #, deltaT: float, epsd: float, flux: float):
+        self.Tbulk  = None #1450.
+        self.Troof  = None #self.Tbulk - deltaT
+        self.Tliqd  = None #1473.
+        self.Tnucl  = None #self.Tliqd - epsd
+        self.flux   = None #flux
+        self.Hnow   = None
+        self.nu     = None
+        self.htbl   = None
+        self.Wrms   = None
+        self.Ra     = None
+        self.Re     = None
+        self.epsdel = None
 
         #self.physics_check()
         #self.nucleation_check() # TODO: do I want it here?
@@ -356,17 +358,17 @@ class SingleRunAttributes:
         with open(fname, "r", encoding="utf-8") as f:
             loaded_parameters = json.load(f)
 
+            self.Hnow   = loaded_parameters["H0"]
             self.Tbulk  = loaded_parameters["Tbulk"]
-            self.Troof  = self.Tbulk - loaded_parameters["dTeff"]  #loaded_parameters["Troof"]
-            self.htbl   = loaded_parameters["htbl"]
-            self.Wrms   = loaded_parameters["Wrms"]
             self.Tliqd  = loaded_parameters["Tliqd"]
-            
-            # TODO: do we need Ra, Re etc. actually not right?
-
-            #print(loaded_parameters["H0"])
+            self.Troof  = self.Tbulk - loaded_parameters["dTeff"]  #loaded_parameters["Troof"]
+            self.Wrms   = loaded_parameters["Wrms"]
+            self.flux   = loaded_parameters["flux"]
+            self.htbl   = loaded_parameters["htbl"]
+            self.nu     = loaded_parameters["nu"] / ModelParameter.rhof
 
     def physics_check(self):
+        print()
         print(" Physics check of the supplied parameters...")
         print("", "="*40)
         if self.Tbulk > self.Tliqd:
@@ -377,7 +379,6 @@ class SingleRunAttributes:
             raise ValueError("[SINGLE RUN] - Negative chamber height!")
         else:
             print(" [OK] Chamber height non-zero, continue...")
-
         print()
 
     def nucleation_check(self):

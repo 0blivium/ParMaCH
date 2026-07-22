@@ -8,7 +8,7 @@ import gc
 import types
 import time as time
 import matplotlib.pyplot as plt 
-from math import trunc, sqrt
+from math import trunc, sqrt, pi
 from numpy.typing import NDArray
 from typing import Dict, Tuple, Optional, Deque
 from scipy.optimize import curve_fit, root_scalar
@@ -339,9 +339,33 @@ class CrystalDistro2D(CrystalDistro):
             Tbulk=self.Tbulk, Troof=self.Troof, htbl=self.htbl, z=z
         )
 
+    def integrate_over_z(self, Tliqd, c):
+        return 4. * pi * np.sum( 
+            np.power(self.adist[:-1], 2.0) * self.ndist[:-1, None] \
+                * Hort_grow(self.tmp_profile(self.zdist[:-1]), Tliqd, c)
+            )
+
     def dz(self):
         return abs(self.zdist[0] - self.zdist[1])
 
+# TODO: calculate solid production function (total?)
+"""
+# Solid production within the TBL:
+dz = distTBL2D.dz(); da = distTBL2D.da()
+pRate_TBL = 4. * pi * np.sum( #da * dz *
+    distTBL2D.ndist * np.power(distTBL2D.adist, 2.0)[:-1, None] \
+        * Hort_grow(distTBL2D.tmp_profile(distTBL2D.zdist[None, :-1]),
+            Tliqd, ModelParameter)
+        ) # TODO: tohle by si chtělo ověřit, že to volumetricky fakt sedí, ale asi jo :D
+"""
+
+def calculate_solid_production_TBL(distTBL2D: CrystalDistro2D, Tliqd: float, c: Parameters) -> float:
+    return 4. * pi * np.sum( 
+            distTBL2D.ndist * np.power(distTBL2D.adist, 2.0)[:-1, None] \
+            * Hort_grow(distTBL2D.tmp_profile(distTBL2D.zdist[None, :-1]),
+            Tliqd, c) )
+
+        
 def comp_hist(phi: tuple[float, float], amin: float, amax: float, bins: int, adjust: int=1.0001) -> CrystalDistro:
     """ From phi (tuple of pairs radius "a" vs. count "#"), compute a non-normalized histogram (CSD). """
 

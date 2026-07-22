@@ -129,6 +129,11 @@ def main_SNGL(args: argparse.Namespace, SIGN: bool):
     print("="*40)
     print(" Running a 1-snapshot call of ParMaCH...")
 
+    """
+        This call of ParMaCh computes a snapshot of the chamber
+        with vertically distributed latent heat.
+    """
+
     # 1) Initialize the kinetic parameters:
     #print(" Only the Hortian crystallisation is supported..."); args.NG_METHOD = 2
     kinvals = "-"
@@ -151,7 +156,9 @@ def main_SNGL(args: argparse.Namespace, SIGN: bool):
             ModelParameter.Tg_HG97 = args.Tg97
     if args.NG_METHOD == 1 and args.kinref != -1: raise Exception("You chose reference kinetics!")
 
+    # Assert mTaC_UNIFIED solver and step-by-step approach in the TBL:
     args.SED_METHOD = 3
+    args.TBL_METHOD = 2
 
     # 2) Attributes Namespace:             
     for key, atrval in vars(args).items():
@@ -175,6 +182,19 @@ def main_SNGL(args: argparse.Namespace, SIGN: bool):
     else:
         ModelParameter.rhoc = ModelParameter.rhocA
 
+    # Initialize and save the alloy:
+    binalloyAnDi = BinaryAlloy(
+                    Tmax1 = ModelParameter.TmaxAn,
+                    Tmax2 = ModelParameter.TmaxDi,
+                    Teut  = ModelParameter.TeutAD,
+                    X0    = args.XL0,
+                    Xeut  = ModelParameter.Xeut,
+                    Dm1   = ModelParameter.Dm1,
+                    Dm2   = ModelParameter.Dm2
+                )
+    with open(f"{ModelParameter.outfile}/binary_alloy.pkl", "wb") as f:       
+        pickle.dump(binalloyAnDi, f)
+        f.close()
 
     #ModelParameter.epsdel = return_epsdel(SingleRun.Tliqd)
     #print(f"Nucleation delay: {ModelParameter.epsdel:.3f}.")
@@ -182,7 +202,8 @@ def main_SNGL(args: argparse.Namespace, SIGN: bool):
     # 3) Initialisation of the single run:
 
     # Load the chamber profile from a json file supplied by 2DConLat:
-    SingleRun = SingleRunAttributes(deltaT=0.0, epsd=0.0, flux=0.0)
+    
+    SingleRun = SingleRunAttributes() #deltaT=0.0, epsd=0.0, flux=0.0)
     try:
         print(f" Loading the input parameters from 'parmach_input.json'...")
         print(" ", os.getcwd())
@@ -193,11 +214,16 @@ def main_SNGL(args: argparse.Namespace, SIGN: bool):
         print(f" Terminating ParMaCH!")
         exit()
 
+    # Derive the nucleation lag and the nucleation threshold:
+    epsdel = return_epsdel(SingleRun.Tliqd)    
+    SingleRun.Tnucl = SingleRun.Tliqd - epsdel
     SingleRun.physics_check()
     SingleRun.parameter_print()
 
     # 4) Call the 1-snapshot solver:       
-    srun_solver(SingleRun=SingleRun)
+    srun_solver(SingleRun=SingleRun, 
+                alloy=binalloyAnDi
+                )
 
     print(f" Visualising the latent heat distributions...")
     print(f" Saving the latent heat sources into 'XY.dat'...")

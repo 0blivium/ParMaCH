@@ -33,7 +33,7 @@ from m1DHE import *
 from mFunc import CrystalDistro, CrystalBatch, CrystalDistro2D, BinaryAlloy
 from mFunc import Hort_grow, Hort_nucl, pow_nucl, pow_grow, temperature_profile, hfce, bulk_growth
 from mFunc import comp_hist, wStokes, visc0_GIORDANO, predictor_evol, corrector_evol, avg_growth, crystal_shift
-from mFunc import lmd_stokes, wShrink, hflux_custom, crystal_decay, return_epsdel
+from mFunc import lmd_stokes, wShrink, hflux_custom, crystal_decay, return_epsdel, calculate_solid_production_TBL
 from mFunc import adapt_timestepPI, ODMC_errorcheck, benchmark_solution
 from mFunc import call_mTaCJIT, call_mMoDJIT, call_mAnGZ
 from mPlot import plot_pnucage, plot_distribution, plot_tbl_distribution, plot_1D
@@ -48,6 +48,7 @@ logger = logging.getLogger(__name__)
 
 def TBLphase(
     step:   int,                # step of the chamber thermal evolution
+    Hnow:   float,              # current height of the chamber
     Tbulk:  float,              # bulk temperature
     Troof:  float,              # roof temperature
     Tliq:   float,              # liquidus tempeature
@@ -119,7 +120,7 @@ def TBLphase(
 
     factor = ((27. * nu * htbl * ModelParameter.rhof) / (2. * ModelParameter.gacc * (ModelParameter.rhoc - ModelParameter.rhof)))**(1./3.)
     tres_est = factor / (avg_growth(Tbulk, Troof, Tliq))**(2./3.)
-    dtTBL = tres_est / 500.
+    dtTBL = tres_est / 120.
     Shared.dtTBL = dtTBL # update the time step in the shared class!
 
     # Plume detachment time scale (Turcotte & Schubert 2012):
@@ -137,7 +138,12 @@ def TBLphase(
     match Attributes.TBL_METHOD:
         # a) step-by-step method:
         case cMethod.mSbS:
-            if step == 0 or Attributes.DEBUGRUN: print("[WARNING] - cMethod.mSbS employed.")
+            if Attributes.srun: 
+                print()
+                print(" Steady-state in the TBL:")
+                print("="*40)
+                print()
+            if step == 0 or Attributes.DEBUGRUN: print(" [WARNING] - cMethod.mSbS employed.")
             tol = 1.e-6; nold = 0; printstp = 1; nuc_rand = False
             #assert(ModelParameter.Ntbl >= 300)
             CrystalFamily = np.array([CrystalBatch(0., 0., 0., 0.) for _ in np.arange(0, stpsTBL) for _ in np.arange(0, ModelParameter.Ntbl)])
@@ -180,9 +186,9 @@ def TBLphase(
                 if np.any(phiTBL) and i % printstp == 0:
                     nCrystals = np.sum([item.count for item in phiTBL])
                     diff = abs(nCrystals - nold)
-                    print(f"Step (time): {i*dtTBL}{Units.tunit} | Crystal count: {nCrystals:.4f} / {Diag.cnt0DMC:.4f} (convg. {diff:.6e}).")
+                    print(f" Elapsed time: {i*dtTBL:.2f}{Units.tunit} | Crystal count: {nCrystals:.4f} / {Diag.cnt0DMC:.4f} (convg. {1.2*diff:.3e} %).")
                     if abs(nCrystals - nold) < tol:
-                        logger.info(f"Stable state reached at time: {(i*dtTBL):.3e}.")
+                        logger.info(f" Stable state reached at time: {(i*dtTBL):.3e}.")
                         istop = i
                         break
                     nold = nCrystals
@@ -210,23 +216,71 @@ def TBLphase(
                 zbins = np.linspace(0.0, htbl, num=RunConstants.nbins)
                 radius, count, zcoord = np.array(list(zip(*phiHistActive2D)))
 
+                print(np.sum(count))
                 Nij, aedges, zedges = np.histogram2d(
                     radius, zcoord,
                     bins=[abins, zbins],
                     weights=count
-                )
+                ) # NOTE: aedges & zedges and abins & zbin are identical!
+                #print(type(Nij))
+                #print(Nij.shape)
+                #print(np.sum(Nij))
+                #print(Nij)
 
                 # Crystalinity in the TBL:
                 phiB_htbl = (4. / 3.) * pi * np.sum( (distTBLActive.ndist) * np.power(distTBLActive.adist, 3.)) / htbl 
 
                 plot_2D_tbl_distribution_active(
-                    step=step, aedges=1.e3*aedges, zedges=1.e3*zedges, N=Nij, phiB_htbl=phiB_htbl
+                    step=step, aedges=1.e3*aedges, zedges=1.e3*zedges, Nij=Nij, phiB_htbl=phiB_htbl
                 )
+
+                #print(Nij)
 
                 # Assemble the 2D distribution:
                 distTBL2D = CrystalDistro2D(
-                    adist=aedges, zdist=zedges, ndist=Nij, Tbulk=Tbulk, Troof=Troof, htbl=htbl
+                    adist=aedges, ndist=Nij, zdist=zedges, Tbulk=Tbulk, Troof=Troof, htbl=htbl
                 )
+
+                #print(distTBL2D.ndist.shape)
+                #print(Nij)
+                #print(distTBL2D.ndist)
+                #print()
+
+
+                #_da = abs(aedges[0] - aedges[1])
+                #_dz = abs(zedges[0] - zedges[1])
+                #print(_da, _dz, np.sum(count))
+
+                # Beware, the Nij variable is binned:
+                """
+                chitotal = 0.0
+                for i in range(Nij.shape[0]):
+                    for j in range(Nij.shape[1]):
+                        _z = zbins[j]
+                        _T = temperature_profile(Tbulk, Troof, htbl, _z)
+                        _G = Hort_grow(_T, Tliq, ModelParameter)
+                        chitotal += (4.0 * pi * np.power(abins[i], 2.0) * Nij[i,j] * _G) 
+
+                print()
+                print("(1) chidot:", chitotal, chitotal * htbl, chitotal / (300.0))
+                print()
+
+                chitotal = 0.0
+                for i in range(Nij.shape[0]):
+                    for j in range(Nij.shape[1]):
+                        _z = zbins[i]
+                        _T = temperature_profile(Tbulk, Troof, htbl, _z)
+                        _G = Hort_grow(_T, Tliq, ModelParameter)
+                        chitotal += (4.0 * pi * np.power(abins[j], 2.0) * Nij[i,j] * _G) 
+
+                print()
+                print("(2) chidot:", chitotal, chitotal * htbl, chitotal / (300.0))
+                print()
+                """
+
+                prateTBL  = calculate_solid_production_TBL(distTBL2D=distTBL2D, Tliqd=Tliq, c=ModelParameter) / Hnow
+                prateTBLz = distTBL2D.integrate_over_z(Tliqd=Tliq, c=ModelParameter) # FIXME: this is wrong!
+                Shared.prateTBLz = prateTBLz
 
         # b) generation method (master version):
         case cMethod.mGen:
@@ -285,7 +339,7 @@ def TBLphase(
             logger.info(f"Maximum/minimum radius falling into the bulk from the TBL: {(amax*RunConstants.mtomm):.2f}\
                                 / {(amin*RunConstants.mtomm):.2f} [mm]")
         phiTBLhist = [(batch.radius, batch.count) for batch in phiTBL]
-        distTBL = comp_hist(phi=phiTBLhist, amin=0.0,amax=amax, bins=RunConstants.nbins)
+        distTBL = comp_hist(phi=phiTBLhist, amin=0.0, amax=amax, bins=RunConstants.nbins)
         tbl_end = time.process_time()
         logger.info(f"Elapsed CPU time (TBL phase): {(tbl_end - tbl_start):.4f}{Units.tunit}.")
         logger.info(f"Shifting: average number of crystals nucleated per time step (discretized sum): {Diag.cnt0DMC:.3e}")
@@ -337,7 +391,7 @@ def TBLphase(
             pass
 
     else:
-        if Attributes.DEBUG: print("No crystals were gravitationally extracted!")
+        if Attributes.DEBUG: print(" [WARNING] No crystals were gravitationally extracted!")
 
         Shared.phiTBL = CrystalFamilyActive
         distTBL = copy.deepcopy(distTBLActive) # replace the flux with the swept suspended distribution!
@@ -571,11 +625,11 @@ def calculate_distributions(i: int, Ra: float, Re: float, Wrms: float, Hnow: flo
     # Thickness of the difussion layer/nucleation sublayer:
     _lmd = lmd_stokes(_nu, ModelParameter)
     Nu = calculate_nusselt_number(Ra, _nu / ModelParameter.kappa, Shared.regime)
-    
+
     # NOTE: The predicted thicknesses can be substantially different (up to 1 order of magnitude difference)!
     htbl = 6.4 * np.power(Ra, -1./3.) * Hnow if not Attributes.TBL else calculate_tbl_thickness(Hnow, Nu) 
 
-    if Attributes.SRUN and SingleRun is not None: htbl = SingleRun.htbl
+    if Attributes.srun and SingleRun is not None: htbl = SingleRun.htbl
     hnbl = min(htbl*(Tnucl - Troof) / (Tbulk - Troof), htbl)
 
     if hnbl < 0.0: raise ValueError("Thickness of the nucleation sublayer can not be negative!")
@@ -597,7 +651,7 @@ def calculate_distributions(i: int, Ra: float, Re: float, Wrms: float, Hnow: flo
 
     # Calculate the TBL outflow/suspended distribution:
     # NOTE: TBL crystal flux per time step delta t_b!
-    distTBL, distTBLActive, distTBL2D = TBLphase(i, Tbulk, Troof, Tliqd, htbl, hnbl, _nu, ptbl1D=False) 
+    distTBL, distTBLActive, distTBL2D = TBLphase(i, Hnow, Tbulk, Troof, Tliqd, htbl, hnbl, _nu, ptbl1D=False) 
     distTBL_benchmark = copy.deepcopy(distTBL)
     if bulk_grow == 0.0 and not Attributes.tblaoff: 
         hRate = 0.0; pRate = 0.0; amean = 0.0; ameanblk = 0.0; phi0 = 0.0
@@ -606,17 +660,24 @@ def calculate_distributions(i: int, Ra: float, Re: float, Wrms: float, Hnow: flo
     if Attributes.DEBUGRUN:
         print()
         print()
-        print(f"Surface densities:")
+        print(f" > Surface densities:")
+        print("="*40)
         print(f"Number of crystals nucleated/extracted/falling from the distTBL (dtb):   {(np.sum(distTBL.ndist)):.3e}.")
         print(f"Number of crystals nucleated per unit time:                              {(Diag.cnt0DMC / Shared.dtTBL):.3e}.")
         print(f"Nucleation rate per unit volume of the chamber:                          {(Diag.cnt0DMC / Shared.dtTBL / Hnow):.3e}.")
+        print("="*40)
 
         if distTBLActive is not None: # TODO: do it properly
-            phiB_htbl = (4./3.) * pi * np.sum( (distTBLActive.ndist / htbl) * np.power(distTBLActive.adist, 3.) )
+            phiB_htbl = (4. / 3.) * pi * np.sum( (distTBLActive.ndist / htbl) * np.power(distTBLActive.adist, 3.) )
+            print()
+            print(f" > TBL summary:")
+            print("="*40)
             print(f"Number of crystals suspended in TBL:                         {np.sum(distTBLActive.ndist):.3e}.")
-            print(f"Number of crystals suspended in TBL (per unit volume TBL):   {np.sum(distTBLActive.ndist)/htbl:.3e}.")
+            #print(f"Number of crystals suspended in TBL (per unit volume TBL):   {np.sum(distTBLActive.ndist)/htbl:.3e}.") # FIXME: doesnt make much sense?
             print(f"Volume occupied within the TBL:                              {phiB_htbl:.3e}.")
-            print(f"Crystalinity within TBL: {phiB_htbl:.3e}.")
+            print(f"Number of crystals leaving TBL per unit time:                {np.sum(distTBL.ndist)/Shared.dtTBL:.3e}.")
+            print(f"Crystalinity within TBL:                                     {phiB_htbl:.3e}.")
+            print("="*40)
 
     # NOTE: this is used to copy-paste arrays from the terminal window
     #print(np.array2string(distTBL.adist, separator=', '))   
@@ -645,10 +706,15 @@ def calculate_distributions(i: int, Ra: float, Re: float, Wrms: float, Hnow: flo
     distBLK_idle = None
 
     if Attributes.DEBUGRUN: 
-        print(f"Fall-in per unit time:                  {' ' * 33}{(np.sum(distTBL.ndist)/Shared.dtTBL):.3e}.")
-        print(f"Suspended crystals:                     {' ' * 33}{np.sum(distBLK.ndist):.3e}.")
-        print(f"Suspended crystals (per unit volume):   {' ' * 33}{(np.sum(distBLK.ndist)/Hnow):.3e}.")
-        print(f"Outflow per unit time:                  {' ' * 33}{np.sum(distSED.ndist)/Shared.dtSED:.3e}.")
+        print()
+        print(" > Further diagnostics:")
+        print("="*40)
+        print(f"Fall-in per unit time:                              {' ' * 33}{(np.sum(distTBL.ndist)/Shared.dtTBL):.3e}.")
+        print(f"Suspended crystals (bulk):                          {' ' * 33}{np.sum(distBLK.ndist):.3e}.")
+        print(f"Suspended crystals (bulk, per unit volume chamber): {' ' * 33}{(np.sum(distBLK.ndist)/Hnow):.3e}.")
+        print(f"Outflow per unit time:                              {' ' * 33}{np.sum(distSED.ndist)/Shared.dtSED:.3e}.")
+        print("="*40)
+        print()
 
     # Sanity check/warning - in case we nucleate but it is a negligible amount:
     if np.sum(distBLK.ndist) == 0.0: 
@@ -693,23 +759,29 @@ def calculate_distributions(i: int, Ra: float, Re: float, Wrms: float, Hnow: flo
 
         # Solid production within the TBL:
         dz = distTBL2D.dz(); da = distTBL2D.da()
-        pRate_TBL = 4. * pi * da * dz * np.sum(
-            distTBL2D.ndist * np.power(distTBL2D.adist, 2.0)[1:, None] \
-                * Hort_grow(distTBL2D.tmp_profile(distTBL2D.zdist[None, 1:]),
+        pRate_TBL = 4. * pi * np.sum( #da * dz *
+            distTBL2D.ndist * np.power(distTBL2D.adist, 2.0)[:-1, None] \
+                * Hort_grow(distTBL2D.tmp_profile(distTBL2D.zdist[None, :-1]),
                     Tliqd, ModelParameter)
                 ) # TODO: tohle by si chtělo ověřit, že to volumetricky fakt sedí, ale asi jo :D
-        print(f"Solid production within the TBL: {pRate_TBL:.3e}.")
+        print(f"Solid production flux out of TBL:               {(1./(Shared.dtTBL*Hnow))*(4. / 3.) * pi * np.sum(distTBL.ndist * np.power(distTBL.adist, 3.0)):.3e}.")
+        print(f"Solid production within the TBL:                {pRate_TBL/Hnow:.3e}.")
 
         # Compare with the outflow volume:
         pRate_TBL_outflow = (1. / Shared.dtTBL) * (4. / 3.) * pi * np.sum(distTBL.ndist * np.power(distTBL.adist, 3.0))
-        print(f"Outflow volume:                  {pRate_TBL_outflow:.3e}.")
+        print(f"Outflow volume (per unit time):                 {pRate_TBL_outflow:.3e}.")
     ###############################################################################################################
 
     # Production rate:
     pRate_idle = 0.0
     pRate = 4. * pi * bulk_grow * simpson(np.power(distBLK.adist, 2.) * distBLK.ndist, distBLK.adist) # solid fraction contribution from the bulk!
     pRate0 = pRate
+
+    #print("TBL dist in old units: ", (4. / 3.) * pi * np.sum(distTBL.ndist * np.power(distTBL.adist, 3.0)) )  # solid production flux from the TBL! 
+
     distTBL.scale(np.power(Hnow * Shared.dtTBL, -1.))                                                 # convert the TBL flux to units per unit volume of the chamber!
+
+    #print( Hnow * (4. / 3.) * pi * np.sum(distTBL.ndist * np.power(distTBL.adist, 3.0)) )  # solid production flux from the TBL! 
 
     # NOTE: POZOR, distTBL distribuce je už v konvertovaných "JW" jednotkách!
     # NOTE: Production of solid
@@ -753,7 +825,6 @@ def calculate_distributions(i: int, Ra: float, Re: float, Wrms: float, Hnow: flo
     """
     pRate_idle = 0.0
 
-
     # Sedimentation rate after Jarvis & Woods (M&N only gives the correct answer):
     hRateJW = _lmd * (4. / 3.) * pi * simpson(np.power(distBLK.adist, 5.) * distBLK.ndist, distBLK.adist)
 
@@ -775,10 +846,10 @@ def calculate_distributions(i: int, Ra: float, Re: float, Wrms: float, Hnow: flo
         print(f"SOLID PRODUCTION")
         print(f"------------------------------------------------------------------------------------")
         print(f"Bulk (active):                              {pRate0:.3e}.")
-        print(f"Bulk (idle):                                {pRate_idle:.3e}.")
+        print(f"Bulk (idle):                                {pRate_idle:.3e} [DEPRECATED].")
         print(f"TBL inflow:                                 {pRate_TBL:.3e}.")
         print(f"Total production:                           {(pRate0 + pRate_idle + pRate_TBL):.3e}")
-        print(f"Theoretical chidot I should measure is:     {(hRate / Hnow):.3e}.")
+        print(f"Theoretical solid production:               {(hRate / Hnow):.3e}.")
         print(f"------------------------------------------------------------------------------------")
         print()
         print(f"SEDIMENTATION RATE")
@@ -819,57 +890,53 @@ def calculate_distributions(i: int, Ra: float, Re: float, Wrms: float, Hnow: flo
             distSED=distSED_benchmark, distBLK=distBLK_benchmark, pshow=1
         )
 
+    # FIXME: CHECK IF THE SAVED CSDs AER IN "CSD" UNITS?
+    if Attributes.DEBUG: 
+        dn = ModelParameter.outfile + "/BENCH" + str(i)
+        if i % Attributes.printstep == 0:
+            a0 = Diag.amaxtbl
+            __lmd = lmd_stokes(_nu, ModelParameter)
+            alpha = __lmd * Diag.blkgrow**2 / 3.
+            beta  = Wrms + __lmd * a0**2
+            gama  = __lmd*a0*Diag.blkgrow
+            delta = - Hnow
 
-    # HERE: SAVE CSD IN "CSD" UNITS?
-    #######################################################################################
-    #"""
-    dn = ModelParameter.outfile + "/BENCH" + str(i)
-    if i % Attributes.printstep == 0:
-        a0 = Diag.amaxtbl
-        __lmd = lmd_stokes(_nu, ModelParameter)
-        alpha = __lmd * Diag.blkgrow**2 / 3.
-        beta  = Wrms + __lmd * a0**2
-        gama  = __lmd*a0*Diag.blkgrow
-        delta = - Hnow
-
-        def f1(t): return alpha * t**3 + beta * t + delta + gama * t**2
-        tbot = root_scalar(f1, bracket=[0, 1e6], method="brentq").root
-        ttop = (Diag.atrn - a0) / Diag.blkgrow
-        tratio = tbot / ttop
-        tblgrowmean = (Hort_grow(Tbulk, Tliqd, ModelParameter) + Hort_grow(Troof, Tliqd, ModelParameter)) / 2.0
-        objs = [
-            np.array(distBLK_benchmark.adist, dtype=float), 
-            np.array(distBLK_benchmark.ndist, dtype=float), 
-            np.array(distSED_benchmark.adist, dtype=float), 
-            np.array(distSED_benchmark.ndist, dtype=float),
-            np.array([Diag.atrn]),
-            np.array([Diag.astn]),
-            np.array([np.max(distTBL.adist)]),
-            np.array([Diag.blkgrow]),
-            np.array([Hnow]),
-            np.array([Shared.dtTBL]),
-            np.array([Shared.dtSED]),
-            np.array([Tbulk]),
-            np.array([Tliqd]),
-            np.array([Troof]),
-            np.array([tblgrowmean]),
-            np.array([tratio]),
-            np.array([tbot]),
-            np.array([ttop]),
-            np.array(distTBL_benchmark.adist, dtype=float),
-            np.array(distTBL_benchmark.ndist, dtype=float)
-        ]
-        objs_padded = []
-        ml = max([len(obj) for obj in objs])
-        for _, obj in enumerate(objs):
-            if len(obj) < ml:
-                obj_padded = np.pad(obj, (0, ml - len(obj))) 
-                objs_padded.append(obj_padded)
-            else:
-                objs_padded.append(obj)
-        np.savetxt(dn, np.column_stack(objs_padded), delimiter="\t")
-    #"""
-    #######################################################################################
+            def f1(t): return alpha * t**3 + beta * t + delta + gama * t**2
+            tbot = root_scalar(f1, bracket=[0, 1e6], method="brentq").root
+            ttop = (Diag.atrn - a0) / Diag.blkgrow
+            tratio = tbot / ttop
+            tblgrowmean = (Hort_grow(Tbulk, Tliqd, ModelParameter) + Hort_grow(Troof, Tliqd, ModelParameter)) / 2.0
+            objs = [
+                np.array(distBLK_benchmark.adist, dtype=float), 
+                np.array(distBLK_benchmark.ndist, dtype=float), 
+                np.array(distSED_benchmark.adist, dtype=float), 
+                np.array(distSED_benchmark.ndist, dtype=float),
+                np.array([Diag.atrn]),
+                np.array([Diag.astn]),
+                np.array([np.max(distTBL.adist)]),
+                np.array([Diag.blkgrow]),
+                np.array([Hnow]),
+                np.array([Shared.dtTBL]),
+                np.array([Shared.dtSED]),
+                np.array([Tbulk]),
+                np.array([Tliqd]),
+                np.array([Troof]),
+                np.array([tblgrowmean]),
+                np.array([tratio]),
+                np.array([tbot]),
+                np.array([ttop]),
+                np.array(distTBL_benchmark.adist, dtype=float),
+                np.array(distTBL_benchmark.ndist, dtype=float)
+            ]
+            objs_padded = []
+            ml = max([len(obj) for obj in objs])
+            for _, obj in enumerate(objs):
+                if len(obj) < ml:
+                    obj_padded = np.pad(obj, (0, ml - len(obj))) 
+                    objs_padded.append(obj_padded)
+                else:
+                    objs_padded.append(obj)
+            np.savetxt(dn, np.column_stack(objs_padded), delimiter="\t")
 
     return (htbl, hnbl, hRate, pRate, amean, ameanblk, phi0)
 
@@ -1010,6 +1077,7 @@ def solve_odes1D(Hnow, XL, Tbulk, Tliqd, rhs_h, rhs_xl):
 def calculate_rates(_i: int, tCool: float, Ra: float, Re: float, Wrms: float, Hnow: float, Tbulk: float, Troof: float,
                     Tliqd: float, Tnucl: float, nu: float, const: Parameters, flux: float, Teut: float, 
                     SingleRun: SingleRunAttributes=None
+
     ) -> tuple[float, float, float, float, float, float, float, float, float]:
     
     """ Calculate the sedimentation/production rates """
@@ -1264,7 +1332,10 @@ def evol_chamber_step(
             )
 
 # Single run solver of the ParMaCH model:
-def srun_solver(SingleRun: SingleRunAttributes) -> None:
+def srun_solver(SingleRun: SingleRunAttributes, # SingleRun object
+                alloy:     Type[BinaryAlloy],   # binary alloy
+
+    ) -> None:
     _i = 1; tCool = 0.0; Teut = 0.0
 
     # FIXME: alloy setup
@@ -1272,24 +1343,19 @@ def srun_solver(SingleRun: SingleRunAttributes) -> None:
     # Single run requires the computation of distTBL2D:
     #Attributes.TBL_METHOD = 2 # FIXME: <--- tohle nebude třeba?
     
-    # If the physics_check() passed through, you automatically have crystallisation guaranteed:
+    # If the physics_check() passed through, the crystallisation is guaranteed:
     Shared.onsetc = _i
 
     # Save the initial values of viscosity, heat flux, and liquidus temperature:
     Tbulk = SingleRun.Tbulk
     Troof = SingleRun.Troof
     Tliqd = SingleRun.Tliqd
+    Tnucl = SingleRun.Tnucl
     Hnow  = SingleRun.Hnow
-    nu    = SingleRun.nu    # TODO: call Giordano
+    nu    = SingleRun.nu    # NOTE: Giordano called in 2DConLat.cpp already!
     flux  = SingleRun.flux
-    Ra    = SingleRun.Ra
-    Re    = SingleRun.Re 
     Wrms  = SingleRun.Wrms
-
-    # Nucleation delay:
-    epsdel = return_epsdel(Tliqd)
-    print("epsdel: ", epsdel)
-    Tnucl = Tliqd - epsdel
+    htbl  = SingleRun.htbl  # NOTE: 2DConLat.cpp also provides the thickness of the boundary layer!
 
     # Evade numba error:
     Shared.Tref = Tliqd
@@ -1297,34 +1363,56 @@ def srun_solver(SingleRun: SingleRunAttributes) -> None:
     # Parameterization of convection:
     #Pr, Ra, Re, Nu, Wrms = convection_state(nu, Hnow, Tbulk, Troof, ModelParameter)
     
-    print(Troof, Tnucl, Tbulk, Tliqd)
-
+    #print(Troof, Tnucl, Tbulk, Tliqd)
+    
     Pr = nu / ModelParameter.kappa
-    Ra = calculate_rayleigh_number(Hnow, Tbulk, Troof, nu, ModelParameter)
-    Re = Wrms * Hnow / nu   
-    flux = 5.0
+    Ra = calculate_rayleigh_number(Hnow, Tbulk, Troof, nu, ModelParameter); SingleRun.Ra = Ra
+    Re = (Wrms * Hnow) / nu; SingleRun.Re = Re
+    flux = 1.0
 
-    print(Pr, Ra, Re, flux, Teut)
+    #print(Pr, Ra, Re, flux, Teut)
 
     htbl, hnbl, hrate, prate, amean, ameanblk, phiB = calculate_rates(
-        _i, tCool, Ra, Re, Wrms, Hnow, Tbulk, Troof, Tliqd, Tnucl, nu, ModelParameter, flux, Teut
+        _i, tCool, Ra, Re, Wrms, Hnow, Tbulk, Troof, Tliqd, Tnucl, nu, ModelParameter, flux, Teut, SingleRun=SingleRun
     )
-
-    print(htbl, hnbl, hrate, prate, amean, ameanblk, phiB)
+    
+    #print(htbl, hnbl, hrate, prate, amean, ameanblk, phiB)
 
     # prate je kompletní, chci ty separátní 
     #print(f"prateTBL: {Shared.prateTBL:.3e}")
     #print(f"prateBLK: {Shared.prateBLK:.3e}")
 
     # OK, now I need to compute latent heat from these guys:
-    print(Shared.prateTBL, Shared.prateBLK, ModelParameter.rhof, ModelParameter.Lheat, htbl)
+    #print(Shared.prateTBL, Shared.prateBLK, ModelParameter.rhof, ModelParameter.Lheat, htbl)
 
     lheatTBL = Shared.prateTBL * ModelParameter.rhof * htbl * ModelParameter.Lheat
     lheatBLK = Shared.prateBLK * ModelParameter.rhof * (Hnow - htbl) * ModelParameter.Lheat
+    print(f" Latent heat (cummulative, TBL): {lheatTBL:.3e} [W/m3].")
+    print(f" Latent heat (cummulative, BLK): {lheatBLK:.3e} [W/m3].")
 
-    print("LATENT HEAT:")
-    print(f"latent heat (TBL): {lheatTBL:.3e}")
-    print(f"latent heat (BLK): {lheatBLK:.3e}")
+    """
+        2D distribution - latent heat distribution within the TBL:
+            %> columns: z | L(z) | chidot(z) | G(z)
+            %> the TBL vertical distribution saved into 'LHEAT_TBL.dat'
+            %> the BLK vertical distribution saved into 'LHEAT_BLK.dat'
+    """                
+    
+    lhTBL = Shared.prateTBLz * ModelParameter.rhof * alloy._Lheat # np.array of size: nbins!
+    np.savetxt('LHEAT_TBL.dat', ((lhTBL, )) )
+
+
+
+    # 2 column format: z [m] | L [J/m3] 
+    #zLH = zbins
+    #lLH = 4 * pi * Nij * abins
+    #print(zLH.shape, lLH.shape)
+    #np.savetxt("LHEAT_TBL.dat", ((zLH, lLH)))
+
+
+
+    print("pratetbl: ", Shared.prateTBL)
+
+    print(" LATENT HEAT:")
 
 
 
@@ -1335,7 +1423,7 @@ def srun_solver(SingleRun: SingleRunAttributes) -> None:
 
 
     print(" [WARNING] - srun_solver not finished!")
-    exit()
+    #exit()
 
     """
         Pro zadané parametry single běhu:
@@ -1344,7 +1432,7 @@ def srun_solver(SingleRun: SingleRunAttributes) -> None:
              
              jak ale budeš počítat latentní teplo? to musíš udělat v &
 
-        iii) výstup, steady-state snapshot? 
+        iii) výstup, steady-state snapshot, DTout, DT2D, DB, DB2D, DS!
         
     """
 

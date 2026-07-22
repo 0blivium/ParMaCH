@@ -1,6 +1,7 @@
 # Program: ParMaCh - 1D Model of Solidification of Magma Chambers (version 3)
 # Module: Plotting and visualiation (during the simulation)
 
+import copy
 import warnings
 import matplotlib.pyplot as plt
 from matplotlib import rcParams
@@ -287,7 +288,7 @@ def plot_2D_tbl_distribution_active(
         step:               int,
         aedges:             np.ndarray,
         zedges:             np.ndarray,
-        N:                  np.ndarray,
+        Nij:                np.ndarray,
         phiB_htbl:          float=0.0,
         savefig:            bool=True,
         savehist:           bool=False,
@@ -296,13 +297,14 @@ def plot_2D_tbl_distribution_active(
     ) -> None:
     """ Plot a 2D TBL distribution of the suspended crystals """
     
+    N = copy.deepcopy(Nij)
     if savehist:
         with open(ModelParameter.outfile + "/hist2d.dat", "wb") as f:
             np.save(f, N)
             np.save(f, aedges)
             np.save(f, zedges)
 
-    N /= np.sum(N)
+    #N /= np.sum(N) 
     fig, ax = plt.subplots(figsize=(13, 8))
     _title = f"Crystalinity within the TBL: $\Phi$ = {1.e2*phiB_htbl:.2f} \%"
     #fig.suptitle(_title, fontsize=22)
