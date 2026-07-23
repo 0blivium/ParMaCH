@@ -222,10 +222,6 @@ def TBLphase(
                     bins=[abins, zbins],
                     weights=count
                 ) # NOTE: aedges & zedges and abins & zbin are identical!
-                #print(type(Nij))
-                #print(Nij.shape)
-                #print(np.sum(Nij))
-                #print(Nij)
 
                 # Crystalinity in the TBL:
                 phiB_htbl = (4. / 3.) * pi * np.sum( (distTBLActive.ndist) * np.power(distTBLActive.adist, 3.)) / htbl 
@@ -234,53 +230,16 @@ def TBLphase(
                     step=step, aedges=1.e3*aedges, zedges=1.e3*zedges, Nij=Nij, phiB_htbl=phiB_htbl
                 )
 
-                #print(Nij)
-
                 # Assemble the 2D distribution:
                 distTBL2D = CrystalDistro2D(
                     adist=aedges, ndist=Nij, zdist=zedges, Tbulk=Tbulk, Troof=Troof, htbl=htbl
                 )
 
-                #print(distTBL2D.ndist.shape)
-                #print(Nij)
-                #print(distTBL2D.ndist)
-                #print()
-
-
-                #_da = abs(aedges[0] - aedges[1])
-                #_dz = abs(zedges[0] - zedges[1])
-                #print(_da, _dz, np.sum(count))
-
-                # Beware, the Nij variable is binned:
-                """
-                chitotal = 0.0
-                for i in range(Nij.shape[0]):
-                    for j in range(Nij.shape[1]):
-                        _z = zbins[j]
-                        _T = temperature_profile(Tbulk, Troof, htbl, _z)
-                        _G = Hort_grow(_T, Tliq, ModelParameter)
-                        chitotal += (4.0 * pi * np.power(abins[i], 2.0) * Nij[i,j] * _G) 
-
-                print()
-                print("(1) chidot:", chitotal, chitotal * htbl, chitotal / (300.0))
-                print()
-
-                chitotal = 0.0
-                for i in range(Nij.shape[0]):
-                    for j in range(Nij.shape[1]):
-                        _z = zbins[i]
-                        _T = temperature_profile(Tbulk, Troof, htbl, _z)
-                        _G = Hort_grow(_T, Tliq, ModelParameter)
-                        chitotal += (4.0 * pi * np.power(abins[j], 2.0) * Nij[i,j] * _G) 
-
-                print()
-                print("(2) chidot:", chitotal, chitotal * htbl, chitotal / (300.0))
-                print()
-                """
-
+                # Extract z-dependence:
                 prateTBL  = calculate_solid_production_TBL(distTBL2D=distTBL2D, Tliqd=Tliq, c=ModelParameter) / Hnow
-                prateTBLz = distTBL2D.integrate_over_z(Tliqd=Tliq, c=ModelParameter) # FIXME: this is wrong!
+                prateTBLz = distTBL2D.integrate_over_a(Tliqd=Tliq, c=ModelParameter) 
                 Shared.prateTBLz = prateTBLz
+                Shared.zbinsTBL  = zedges
 
         # b) generation method (master version):
         case cMethod.mGen:
@@ -430,7 +389,7 @@ def SEDphase(step:       int,                     # step of the thermal evolutio
     """
 
     # Auxiliary initialization and time step estimate:
-    printstp = Attributes.printstep; stpsSed = 100000; tblon = True; grow_cutoff = 1.e-15; distBLK_idle = None 
+    printstp = Attributes.printstep; stpsSed = 30000; tblon = True; grow_cutoff = 1.e-15; distBLK_idle = None 
     if Attributes.DEBUGRUN: printstp = 1
 
     # Residence time scale:
@@ -1397,47 +1356,18 @@ def srun_solver(SingleRun: SingleRunAttributes, # SingleRun object
             %> the BLK vertical distribution saved into 'LHEAT_BLK.dat'
     """                
     
-    lhTBL = Shared.prateTBLz * ModelParameter.rhof * alloy._Lheat # np.array of size: nbins!
-    np.savetxt('LHEAT_TBL.dat', ((lhTBL, )) )
+    # TBL 2D distribution - np.arrays of size: (nbins-1)!:
+    lhTBLz = Shared.prateTBLz * ModelParameter.rhof * alloy._Lheat          
+    zhTBLz = Shared.zbinsTBL[1:]                                            
+    grTBLz = Hort_grow(temperature_profile(Tbulk, Troof, htbl, zhTBLz), Tliqd, ModelParameter)     
+    np.savetxt(ModelParameter.outfile + '/LHEAT_TBL.dat', ((zhTBLz, lhTBLz, Shared.prateTBLz, grTBLz)) )
 
+    # BULK 2D distribution:
+    # TODO
 
-
-    # 2 column format: z [m] | L [J/m3] 
-    #zLH = zbins
-    #lLH = 4 * pi * Nij * abins
-    #print(zLH.shape, lLH.shape)
-    #np.savetxt("LHEAT_TBL.dat", ((zLH, lLH)))
-
-
-
-    print("pratetbl: ", Shared.prateTBL)
-
-    print(" LATENT HEAT:")
-
-
-
-    # COMPUTE THE LATENT HEAT HERE:
-    #plt.plot(Shared.distBLK.adist, Shared.distBLK.ndist)
-    #plt.plot(Shared.distSED.adist, Shared.distSED.ndist)
-    #plt.show()
 
 
     print(" [WARNING] - srun_solver not finished!")
-    #exit()
-
-    """
-        Pro zadané parametry single běhu:
-        i)   vstup: single run, z hlediska kompozice je to jedno, prostě spočtu pro vybranou viskozitu a liquidus teplotu
-        ii)  přepiš veličiny pomocí SR, pak zavolej evol_chamber_step
-             
-             jak ale budeš počítat latentní teplo? to musíš udělat v &
-
-        iii) výstup, steady-state snapshot, DTout, DT2D, DB, DB2D, DS!
-        
-    """
-
-    # WHAT DO I WANNA RETURN? I want to return the latent heat sources, but first simply as two numbers!
-
     return 
 
 

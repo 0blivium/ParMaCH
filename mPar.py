@@ -187,7 +187,7 @@ class Constants:
     """ Constants that are not expected to change. """ 
 
     def __init__(self):
-        self.nbins   = 100                            # [-]           number of bins for histograms 
+        self.nbins   = 50                             # [-]           number of bins for histograms 
         self.Racrit  = 660.                           # [-]           Rayleigh critical number (Schubert & Turcotte, 1991)
         self.HFU     = 41.84e-3                       # [W/m^2]       heat flux unit in Watts!
         self.ytosec  = 31556926.                      # [s]           year to seconds
@@ -230,6 +230,8 @@ class SharedVariables:
         self.prateTBL  = None
         self.prateBLK  = None
         self.prateTBLz = None                         # [s-1]         vertically dependent solid production in the TBL
+        
+        self.zbinsTBL  = None
 
         self.tdecayold = None                         # [-]           time index of the 1D heat flux fit onset  
         self.onsetfit  = None                         # [-]

@@ -339,11 +339,11 @@ class CrystalDistro2D(CrystalDistro):
             Tbulk=self.Tbulk, Troof=self.Troof, htbl=self.htbl, z=z
         )
 
-    def integrate_over_z(self, Tliqd, c):
-        return 4. * pi * np.sum( 
-            np.power(self.adist[:-1], 2.0) * self.ndist[:-1, None] \
-                * Hort_grow(self.tmp_profile(self.zdist[:-1]), Tliqd, c)
-            )
+    def integrate_over_a(self, Tliqd, c):
+        return 4. * pi * np.sum(
+                self.ndist.T * np.power(self.adist, 2.0)[:-1, None]
+                * Hort_grow(self.tmp_profile(self.zdist[:-1]), Tliqd, c),
+                    axis=0)
 
     def dz(self):
         return abs(self.zdist[0] - self.zdist[1])
@@ -527,18 +527,20 @@ def vert_distBLK2D(a, K, volume, H, n_z_bins=50):
 @njit
 def vert_distBLK2D_NEW(a, K, Htop, Hbot, H, bins):
     """ Computer the vertical CSD of the suspended crystals within the bulk """
-    
+    print("len of K: ", K)
+
     # 2D histogram:
-    z2d = np.linspace(0, H, num=bins)
-    a2d = np.linspace(0, np.max(a), num=bins)
+    z2d = linspace_numba(0, H, num=bins)            #np.linspace(0, H, num=bins)
+    a2d = linspace_numba(0, np.max(a), num=bins)    #np.linspace(0, np.max(a), num=bins)
     n2D = np.zeros( (len(z2d), len(a2d)), dtype=np.float64)
 
     ia_all = np.searchsorted(a2d, a, side="right") - 1
     for i in range(len(K)): 
         iK = K[i]; ia = ia_all[i]
         
-        # Go over 
-        bot = Hbot[i]; top = Htop[i]; vol = (bot - top)        
+        # Go over:
+        bot = Hbot[i]; top = Htop[i]; vol = (bot - top)   
+        print("vol: ", vol)     
 
         # Pour crystals into the 2D histogram:
         overlap_bot = np.maximum(z2d[:-1], bot)
@@ -667,7 +669,6 @@ def mTaCJIT_UNIFIED(
         ntbl: np.ndarray, atbl: np.ndarray, const: object, bulk_growth: float,
         dtSED: float, Hnow: float, atrn: float, Wrms: float, bins: int, 
         tc: float, nblk_prev: Optional[np.ndarray]=None, ablk_prev: Optional[np.ndarray]=None,
-        #track_prev: Optional[np.ndarray]=None,
         MaN: bool=False, TBLon: bool=True, tccut: bool=False, eps: float=1.e-3, stop: int=2000
 
     ) -> tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray]:
@@ -821,11 +822,14 @@ def mTaCJIT_UNIFIED(
     # It should trigger pretty much always (idle-mixing!):
     
     if np.any( (trackHistory[:,4*N:5*N] - trackHistory[:,5*N:6*N]) < 0.99*Hnow): 
-        #volume = ( trackHistory[:,5*N:6*N] - trackHistory[:,4*N:5*N] )
-        #adist2D, zdistBLK2D, ndistBLK2D = vert_distBLK2D(
-        #    a=trackHistory[:,N:2*N].flatten(), K=trackHistory[:,:N].flatten(), volume=volume.flatten(), \
-        #    H=Hnow, n_z_bins=bins
-        #)
+        volume = ( trackHistory[:,5*N:6*N] - trackHistory[:,4*N:5*N] )
+
+        adist2D, zdistBLK2D, ndistBLK2D = vert_distBLK2D(
+            a=trackHistory[:,N:2*N].flatten(), K=trackHistory[:,:N].flatten(), volume=volume.flatten(), \
+            H=Hnow, n_z_bins=bins
+        )
+
+        print( len(trackHistory[:,N:2*N].flatten()) )
 
         # TODO: does .flatten do what it is supposed to do?
         #adist2D, zdistBLK2D, ndistBLK2D = vert_distBLK2D_NEW(
@@ -834,18 +838,18 @@ def mTaCJIT_UNIFIED(
         #)
 
         """
-        zdistBLK2D, ndistBLK2D = vert_distBLK(
+        zdistBLK2D, ndistBLK2D = vert_distBLK2D(
                 K=trackHistory[:,:N].flatten(),
                 a=trackHistory[:,N:2*N].flatten(),
                 Htop=trackHistory[:,4*N:5*N].flatten(),
                 Hbot=trackHistory[:,5*N:6*N].flatten()
             )
         """
-        #if 1.e2 * abs( (np.sum(trackHistory[:,:N]) - np.sum(ndistBLK2D)) / np.sum(trackHistory[:,:N]) ) > 10.0:
-        #    print("[WARNING] - Error greater than 10% in vertically distributed crystals!")
-        pass
+        if 1.e2 * abs( (np.sum(trackHistory[:,:N]) - np.sum(ndistBLK2D)) / np.sum(trackHistory[:,:N]) ) > 10.0:
+            print("[WARNING] - Error greater than 10% in vertically distributed crystals!")
+        #pass
     
-    adist2D, zdistBLK2D, ndistBLK2D = None, None, None
+    #adist2D, zdistBLK2D, ndistBLK2D = None, None, None
     return (distBLK, distSED, trackHistory, ss_time, sedoutArray, adist2D, zdistBLK2D, ndistBLK2D)
 
 
@@ -875,6 +879,8 @@ def call_mTaCJIT(
                                     )         
     # TODO: make that fucking 2D distribution...
 
+
+
     #fig, ax = plt.subplots()
     #pcm = ax.pcolormesh(
     #    zdist2D, adist2D, ndist2D,            
@@ -895,12 +901,19 @@ def call_mTaCJIT(
     distBLK   = CrystalDistro(pablk, pnblk)
     distSED   = CrystalDistro(pased, pnsed)
 
-    # print(np.sum(pnblk)) = print(np.sum(n2D))
-    
-    #print(pablk, zdist2D.shape, ndist2D.shape)
-    #plt.pcolormesh(zdist2D, adist2D, ndist2D)
-    #plt.show()
+    # NOTE: this seems to check out
+    print( np.sum(pnblk) )
+    print( np.sum(ndist2D) )
 
+    # ndist2D is a 2D array
+
+    print(zdist2D.shape, adist2D.shape, ndist2D.shape)
+    print("adist2D: ")
+    print(adist2D)
+
+    plt.clf()
+    plt.pcolormesh(zdist2D, adist2D[::50], ndist2D[::50,:])
+    plt.show()
 
     """
     n2D, a2D, z2D = np.histogram2d(
@@ -919,7 +932,11 @@ def call_mTaCJIT(
     #distBLK2D = CrystalDistro2D(
     #    adist=a2D, zdist=z2D, ndist=n2D, Tbulk=Tbulk, Troof=Troof, htbl=Hnow
     #)
+    
+    #print(zdist2D.shape, ndist2D.shape)
+    #print(zdist2D, adist2D, ndist2D)
 
+    #plt.clf()
     #plt.plot(zdist2D, ndist2D)
     #plt.show()
     #print(zdist2D[0], ndist2D[-1])
